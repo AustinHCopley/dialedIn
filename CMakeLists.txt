@@ -66,7 +66,7 @@ target_link_libraries(dial_daemon PRIVATE
 
 # Installation
 install(TARGETS dial_gui dial_daemon
-    RUNTIME DESTINATION bin
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 install(FILES config/default.toml
