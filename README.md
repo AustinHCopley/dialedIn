@@ -39,6 +39,7 @@ The driver uses a two-mode system:
 - Qt5 (Core, Gui, Widgets, Network)
 - CMake 3.16+
 - C++17 compatible compiler
+- toml++ (used for config parsing; a vendored copy is bundled, or use the system `tomlplusplus` package)
 - Linux with HID support
 - brightnessctl, playerctl, wmctrl
 - ydotool + ydotoold (for scroll mode on Wayland)
@@ -73,32 +74,47 @@ The driver has two components communicating via Unix domain socket (`/tmp/dial_s
 
 The GUI must start before the daemon (the install script handles this via systemd service ordering).
 
-## Customization
+## Configuration
 
-Edit commands in `dial_common.h` and rebuild:
+Modes, commands, icons, and the wheel's appearance are read from a config file
+at startup — no rebuild required. Copy the installed default and edit your copy:
 
-```cpp
-namespace DialCommands {
-    const QString VOLUME_UP = "pactl set-sink-volume @DEFAULT_SINK@ +1%";
-    const QString VOLUME_DOWN = "pactl set-sink-volume @DEFAULT_SINK@ -1%";
-    // ...
-}
+```bash
+mkdir -p ~/.config/dialedIn
+cp /usr/local/share/dialedIn/config.toml ~/.config/dialedIn/config.toml
 ```
 
-Rotation sensitivity can be changed in `dial_gui.h`:
+(Use `/usr/share/...` instead of `/usr/local/share/...` for distro packages.)
 
-```cpp
-static constexpr int STEPS_PER_OPTION = 4;  // rotations to move between options
+The file is TOML. `[wheel]` controls size, font, and sensitivity
+(`steps_per_option`); `[colors]` sets the overlay colors (`#RRGGBB` or
+`#RRGGBBAA`); and each `[[modes]]` entry defines a mode's name, icon, optional
+status-bar icon, and the commands run on clockwise (`cw`) / counter-clockwise
+(`ccw`) rotation:
+
+```toml
+[wheel]
+steps_per_option = 4   # dial steps to move one option over
+font = "sans-serif"
+
+[colors]
+accent = "#5078C8E6"
+
+[[modes]]
+name = "Volume"
+icon = "🔊"
+cw   = "pactl set-sink-volume @DEFAULT_SINK@ +1%"
+ccw  = "pactl set-sink-volume @DEFAULT_SINK@ -1%"
 ```
 
-For X11 users, change scroll commands in `dial_common.h` to use xdotool:
+For X11, change the scroll mode commands to `xdotool click 4` / `xdotool click 5`.
+Restart the GUI after editing: `systemctl --user restart dialedIn-gui.service`.
 
-```cpp
-const QString SCROLL_UP = "xdotool click 4";
-const QString SCROLL_DOWN = "xdotool click 5";
-```
+### Theming
 
-Rebuild after changes: `cd build && cmake .. && make`
+Because colors live in `[colors]`, the config can be generated from a theming
+pipeline: render the whole `config.toml` from a template driven by a color
+palette, drop it at `~/.config/dialedIn/config.toml`, and restart the GUI.
 
 ## Troubleshooting
 
