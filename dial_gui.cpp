@@ -29,8 +29,7 @@ DialWheel::DialWheel(QWidget* parent)
       active_mode_index(0),
       rotation(0),
       m_is_visible(false),
-      current_mode(SELECTION_MODE),
-      last_rotation_direction("cw") {
+      current_mode(SELECTION_MODE) {
     // Window flags — BypassWindowManagerHint breaks Wayland surface damage tracking
     // (causes only top-left quadrant to repaint). Use Hyprland window rules for
     // decoration removal instead (see hyprland_rules.conf).
@@ -47,13 +46,6 @@ DialWheel::DialWheel(QWidget* parent)
         QRect screenGeometry = screen->geometry();
         move((screenGeometry.width() - width()) / 2,
              (screenGeometry.height() - height()) / 2);
-    }
-}
-
-void DialWheel::setCurrentOption(int index) {
-    if (index >= 0 && index < static_cast<int>(config.modes.size())) {
-        current_index = index;
-        update();
     }
 }
 
@@ -134,8 +126,6 @@ void DialWheel::paintEvent(QPaintEvent*) {
 }
 
 void DialWheel::rotate(const QString& direction) {
-    last_rotation_direction = direction;
-
     if (current_mode == SELECTION_MODE) {
         // In selection mode: rotate the wheel, selection updates based on position
         const double degreesPerOption = 360.0 / config.modes.size();
@@ -243,18 +233,6 @@ void DialWheel::toggleVisibility() {
     }
 }
 
-void DialWheel::mousePressEvent(QMouseEvent* event) {
-    // No-op for now
-}
-
-void DialWheel::mouseReleaseEvent(QMouseEvent* event) {
-    // No-op for now
-}
-
-void DialWheel::mouseMoveEvent(QMouseEvent* event) {
-    // No-op for now
-}
-
 DialGUI::DialGUI() {
     wheel = std::make_unique<DialWheel>();
     wheel->hide();
@@ -328,14 +306,6 @@ void DialGUI::handleSocketError(QLocalSocket::LocalSocketError error) {
     socket.reset();
 }
 
-void DialGUI::sendMessage(const DialMessage& msg) {
-    if (!socket || socket->state() != QLocalSocket::ConnectedState) return;
-    
-    QDataStream out(socket.get());
-    out.setVersion(QDataStream::Qt_5_0);
-    out << static_cast<int>(msg.type) << msg.data;
-}
-
 void DialGUI::handleMessage(const DialMessage& msg) {
     switch (msg.type) {
         case DialMessageType::BUTTON_PRESS:
@@ -350,14 +320,6 @@ void DialGUI::handleMessage(const DialMessage& msg) {
         case DialMessageType::ROTATION_CCW:
             // Always process rotation, even when hidden (for active mode)
             wheel->rotate("ccw");
-            break;
-
-        case DialMessageType::SELECT_OPTION:
-            wheel->executeCurrent();
-            break;
-
-        case DialMessageType::SET_CURRENT_OPTION:
-            wheel->setCurrentOption(msg.data.toInt());
             break;
 
         default:

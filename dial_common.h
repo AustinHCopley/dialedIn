@@ -6,9 +6,7 @@
 enum class DialMessageType {
     BUTTON_PRESS,
     ROTATION_CW,
-    ROTATION_CCW,
-    SELECT_OPTION,
-    SET_CURRENT_OPTION
+    ROTATION_CCW
 };
 
 // Message structure

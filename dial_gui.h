@@ -28,14 +28,10 @@ public:
     bool isVisible() const { return m_is_visible; }
     void rotate(const QString& direction);
     void executeCurrent();
-    void setCurrentOption(int index);
     Mode getCurrentMode() const { return current_mode; }
 
 protected:
     void paintEvent(QPaintEvent *event) override;
-    void mousePressEvent(QMouseEvent *event) override;
-    void mouseMoveEvent(QMouseEvent *event) override;
-    void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
     DialConfig config;         // loaded style + modes (config.modes is the mode list)
@@ -44,7 +40,6 @@ private:
     double rotation;
     bool m_is_visible;
     Mode current_mode;
-    QString last_rotation_direction;  // Track last rotation: "cw" or "ccw"
 
     int calculateSelectedIndex() const;  // Calculate which option is in selection area
     void writeStatus();  // Write current mode JSON to the configured status file
@@ -64,7 +59,6 @@ private:
     std::unique_ptr<QLocalSocket> socket;
     bool setupSocketServer();
     void handleMessage(const DialMessage& msg);
-    void sendMessage(const DialMessage& msg);
 
 private slots:
     void handleSocketConnection();
