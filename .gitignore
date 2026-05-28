@@ -1,3 +1,9 @@
+# Build output
+build/
+
+# Python venv
+.dialedIn/
+
 # Prerequisites
 *.d
 
