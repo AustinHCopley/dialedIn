@@ -12,17 +12,7 @@
 #include <string>
 #include <cmath>
 #include "dial_common.h"
-
-class DialOption {
-public:
-    DialOption(const std::string& name, const std::string& icon,
-               const QString& cw_cmd, const QString& ccw_cmd)
-        : name(name), icon(icon), cw_cmd(cw_cmd), ccw_cmd(ccw_cmd) {}
-    std::string name;
-    std::string icon;
-    QString cw_cmd;
-    QString ccw_cmd;
-};
+#include "dial_config.h"
 
 class DialWheel : public QWidget {
     Q_OBJECT
@@ -48,20 +38,16 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
-    std::vector<DialOption> options;
+    DialConfig config;         // loaded style + modes (config.modes is the mode list)
     int current_index;
     int active_mode_index;     // Which mode is currently active (when GUI hidden)
     double rotation;
     bool m_is_visible;
     Mode current_mode;
     QString last_rotation_direction;  // Track last rotation: "cw" or "ccw"
-    static const int WHEEL_RADIUS = 100;
-    static const int OPTION_RADIUS = 30;
-    static const int FADE_DURATION = 1000;
-    static constexpr int STEPS_PER_OPTION = 4;  // Number of rotations to move to next option
 
     int calculateSelectedIndex() const;  // Calculate which option is in selection area
-    void updateWaybarStatus();  // Write current mode to /tmp/dial_status for waybar
+    void writeStatus();  // Write current mode JSON to the configured status file
 };
 
 class DialGUI : public QMainWindow {

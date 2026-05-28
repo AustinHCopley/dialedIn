@@ -1,0 +1,73 @@
+# DialedIn configuration.
+#
+# Copy this file to $XDG_CONFIG_HOME/dialedIn/config.toml (usually
+# ~/.config/dialedIn/config.toml) and edit it there. The user copy takes
+# precedence over this installed default; any key you omit keeps its default.
+#
+# Colors are "#RRGGBB" or "#RRGGBBAA" (the trailing byte is alpha/opacity).
+
+[wheel]
+size             = 300          # overlay width and height, in pixels
+option_radius    = 30           # radius of each option bubble
+steps_per_option = 4            # dial steps needed to move one option over
+font             = "sans-serif" # any installed family, or "monospace"
+icon_size        = 16           # point size of the mode icon
+label_size       = 9            # point size of the mode label
+
+[colors]
+background        = "#1E1E1EC8" # inner circle fill
+background_border = "#282828C8"
+selection         = "#5078C878" # highlight wedge at the top (the selector)
+accent            = "#5078C8E6" # fill of the currently selected option
+selected_border   = "#FFFFFFFF" # ring around the selected option
+option            = "#323232C8" # fill of unselected options
+option_border     = "#B4B4B4FF"
+text              = "#FFFFFFFF"
+
+[status]
+# Where to write the current-mode JSON for status bars (e.g. Waybar).
+# Omit this key to use the default ($XDG_RUNTIME_DIR/dialedIn/status.json);
+# set an explicit path to override it, or "" to disable status output.
+# file = ""
+
+# Modes appear on the wheel in the order listed here. Each mode runs `cw` on
+# clockwise rotation and `ccw` on counter-clockwise rotation once activated.
+#   icon        glyph drawn on the wheel (emoji or Nerd Font)
+#   status_icon glyph written to the status file (Nerd Font recommended)
+
+[[modes]]
+name        = "Volume"
+icon        = "🔊"
+status_icon = "󰕾"
+cw          = "pactl set-sink-volume @DEFAULT_SINK@ +1%"
+ccw         = "pactl set-sink-volume @DEFAULT_SINK@ -1%"
+
+[[modes]]
+name        = "Brightness"
+icon        = "☀️"
+status_icon = "󰃠"
+cw          = "brightnessctl set +1%"
+ccw         = "brightnessctl set 1%-"
+
+[[modes]]
+name        = "Media"
+icon        = "🎵"
+status_icon = "󰐊"
+cw          = "playerctl next"
+ccw         = "playerctl previous"
+
+[[modes]]
+name        = "Scroll"
+icon        = "🖱️"
+status_icon = "󰍽"
+# ydotool needs ydotoold running. X11 users can use: xdotool click 5 / click 4
+cw          = "ydotool key 108:1 108:0"
+ccw         = "ydotool key 103:1 103:0"
+
+[[modes]]
+name        = "Windows"
+icon        = "🪟"
+status_icon = "󰖯"
+# wmctrl is X11-only; adjust the geometry to your resolution.
+cw          = "wmctrl -a :ACTIVE: -e 0,0,0,1920,1080"
+ccw         = "wmctrl -a :ACTIVE: -e 0,0,0,960,1080"

@@ -13,24 +13,23 @@
 #include <QBrush>
 #include <QDataStream>
 #include <QFile>
+#include <QDir>
+#include <QFileInfo>
 #include <QTextStream>
+#include <QJsonObject>
+#include <QJsonDocument>
 #include <vector>
 #include <string>
-#include <map>
 #include <cmath>
-
-// Constants for dial events
-constexpr unsigned char BUTTON_DOWN = 0x01;
-constexpr unsigned char BUTTON_UP = 0x00;
-constexpr unsigned char ROTATE_CW = 0x01;
-constexpr unsigned char ROTATE_CCW = 0xff;
-constexpr const char* HIDRAW_DEVICE = "/dev/hidraw1";
 
 DialWheel::DialWheel(QWidget* parent)
     : QWidget(parent),
+      config(loadConfig()),
+      current_index(0),
+      active_mode_index(0),
+      rotation(0),
       m_is_visible(false),
       current_mode(SELECTION_MODE),
-      active_mode_index(0),
       last_rotation_direction("cw") {
     // Window flags — BypassWindowManagerHint breaks Wayland surface damage tracking
     // (causes only top-left quadrant to repaint). Use Hyprland window rules for
@@ -40,28 +39,8 @@ DialWheel::DialWheel(QWidget* parent)
                    Qt::Tool);
     setAttribute(Qt::WA_TranslucentBackground);
 
-    // Initialize options
-    options = {
-        DialOption("Volume", "🔊",
-                  DialCommands::VOLUME_UP,
-                  DialCommands::VOLUME_DOWN),
-        DialOption("Brightness", "☀️",
-                  DialCommands::BRIGHTNESS_UP,
-                  DialCommands::BRIGHTNESS_DOWN),
-        DialOption("Media", "🎵",
-                  DialCommands::MEDIA_NEXT,
-                  DialCommands::MEDIA_PREV),
-        DialOption("Scroll", "🖱️",
-                  DialCommands::SCROLL_DOWN,
-                  DialCommands::SCROLL_UP),
-        DialOption("Windows", "🪟",
-                  DialCommands::WINDOW_MAX,
-                  DialCommands::WINDOW_HALF)
-    };
-
-    current_index = 0;
-    rotation = 0;
-    setFixedSize(300, 300);
+    // Modes and styling come from the config (see loadConfig()).
+    setFixedSize(config.style.size, config.style.size);
 
     // Center on screen
     if (QScreen* screen = QApplication::primaryScreen()) {
@@ -72,7 +51,7 @@ DialWheel::DialWheel(QWidget* parent)
 }
 
 void DialWheel::setCurrentOption(int index) {
-    if (index >= 0 && index < static_cast<int>(options.size())) {
+    if (index >= 0 && index < static_cast<int>(config.modes.size())) {
         current_index = index;
         update();
     }
@@ -88,22 +67,24 @@ void DialWheel::paintEvent(QPaintEvent*) {
     painter.fillRect(rect(), Qt::transparent);
     painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
 
+    const WheelStyle& style = config.style;
+
     QPointF center(width() / 2.0, height() / 2.0);
     double radius = std::min(width(), height()) / 2.0 - 30;
 
     // Draw background circle
-    painter.setPen(QPen(QColor(40, 40, 40, 200), 2));
-    painter.setBrush(QBrush(QColor(30, 30, 30, 200)));
+    painter.setPen(QPen(style.background_border, 2));
+    painter.setBrush(QBrush(style.background));
     painter.drawEllipse(10, 10, width() - 20, height() - 20);
 
     // Draw fixed selection area at the top
     // Qt angles: 0° = 3 o'clock, 90° = 12 o'clock (top), 180° = 9 o'clock, 270° = 6 o'clock
     const double selectionAngle = 90.0; // Top position (12 o'clock in Qt coordinates)
-    const double selectionArc = 360.0 / options.size() * 0.9; // Cover most of option width
+    const double selectionArc = 360.0 / config.modes.size() * 0.9; // Cover most of option width
 
     // Draw selection indicator (wedge at top) - extend to edge of background circle
     painter.setPen(Qt::NoPen);
-    painter.setBrush(QBrush(QColor(80, 120, 200, 120))); // Blue highlight
+    painter.setBrush(QBrush(style.selection));
 
     QPainterPath selectionPath;
     selectionPath.moveTo(center);
@@ -117,10 +98,10 @@ void DialWheel::paintEvent(QPaintEvent*) {
     painter.drawPath(selectionPath);
 
     // Draw rotating options
-    for (size_t i = 0; i < options.size(); ++i) {
+    for (size_t i = 0; i < config.modes.size(); ++i) {
         // Qt coordinate system: 0° = 3 o'clock, goes counter-clockwise
-        // Start at 90° (top) and distribute options evenly
-        double angle = 90.0 - (i * 360.0 / options.size() + rotation);
+        // Start at 90° (top) and distribute config.modes evenly
+        double angle = 90.0 - (i * 360.0 / config.modes.size() + rotation);
         double rad_angle = angle * M_PI / 180.0;
 
         // Calculate position using standard circular positioning
@@ -129,25 +110,26 @@ void DialWheel::paintEvent(QPaintEvent*) {
 
         // Highlight the selected option (the one in the selection area)
         if (static_cast<int>(i) == current_index) {
-            painter.setPen(QPen(QColor(255, 255, 255), 3));
-            painter.setBrush(QBrush(QColor(80, 120, 200, 230))); // Bright blue
+            painter.setPen(QPen(style.selected_border, 3));
+            painter.setBrush(QBrush(style.accent));
         } else {
-            painter.setPen(QPen(QColor(180, 180, 180), 1));
-            painter.setBrush(QBrush(QColor(50, 50, 50, 200)));
+            painter.setPen(QPen(style.option_border, 1));
+            painter.setBrush(QBrush(style.option));
         }
 
-        QRectF option_rect(x - 30, y - 30, 60, 60);
+        const double r = style.option_radius;
+        QRectF option_rect(x - r, y - r, r * 2, r * 2);
         painter.drawEllipse(option_rect);
 
         // Draw icon and text
-        painter.setPen(QColor(255, 255, 255));
-        painter.setFont(QFont("Arial", 16));
-        painter.drawText(QRectF(x - 30, y - 30, 60, 35), Qt::AlignCenter,
-                        QString::fromStdString(options[i].icon));
+        painter.setPen(style.text);
+        painter.setFont(QFont(style.font_family, style.icon_point_size));
+        painter.drawText(QRectF(x - r, y - r, r * 2, r + 5), Qt::AlignCenter,
+                        config.modes[i].icon);
 
-        painter.setFont(QFont("Arial", 9));
-        painter.drawText(QRectF(x - 30, y, 60, 25), Qt::AlignCenter,
-                        QString::fromStdString(options[i].name));
+        painter.setFont(QFont(style.font_family, style.label_point_size));
+        painter.drawText(QRectF(x - r, y, r * 2, r - 5), Qt::AlignCenter,
+                        config.modes[i].name);
     }
 }
 
@@ -156,8 +138,8 @@ void DialWheel::rotate(const QString& direction) {
 
     if (current_mode == SELECTION_MODE) {
         // In selection mode: rotate the wheel, selection updates based on position
-        const double degreesPerOption = 360.0 / options.size();
-        const double degreesPerStep = degreesPerOption / STEPS_PER_OPTION;
+        const double degreesPerOption = 360.0 / config.modes.size();
+        const double degreesPerStep = degreesPerOption / config.style.steps_per_option;
 
         if (direction == "cw") {
             rotation = std::fmod(rotation + degreesPerStep, 360);
@@ -171,20 +153,20 @@ void DialWheel::rotate(const QString& direction) {
     } else {
         // In active mode: execute the command for the active mode
         const QString& cmd = (direction == "cw")
-                            ? options[active_mode_index].cw_cmd
-                            : options[active_mode_index].ccw_cmd;
+                            ? config.modes[active_mode_index].cw_cmd
+                            : config.modes[active_mode_index].ccw_cmd;
         QStringList parts = QProcess::splitCommand(cmd);
         QProcess::startDetached(parts.takeFirst(), parts);
         qInfo("Active mode [%s]: executed %s command",
-              options[active_mode_index].name.c_str(),
-              direction.toStdString().c_str());
+              qUtf8Printable(config.modes[active_mode_index].name),
+              qUtf8Printable(direction));
     }
 }
 
 int DialWheel::calculateSelectedIndex() const {
     // Selection area is at the top (90 degrees in Qt coordinates)
     // Calculate which option is closest to the top position
-    const double degreesPerOption = 360.0 / options.size();
+    const double degreesPerOption = 360.0 / config.modes.size();
     const double selectionAngle = 90.0; // Top of circle (Qt coordinates)
 
     // Normalize rotation to 0-360
@@ -196,7 +178,7 @@ int DialWheel::calculateSelectedIndex() const {
     int selectedIndex = 0;
     double minDiff = 360.0;
 
-    for (size_t i = 0; i < options.size(); ++i) {
+    for (size_t i = 0; i < config.modes.size(); ++i) {
         // Calculate where this option is positioned (matching the drawing code)
         double optionAngle = std::fmod(90.0 - (i * degreesPerOption + normalizedRotation), 360.0);
         if (optionAngle < 0) optionAngle += 360.0;
@@ -221,28 +203,29 @@ void DialWheel::executeCurrent() {
     current_mode = ACTIVE_MODE;
     hide();
     m_is_visible = false;
-    qInfo("Activated mode: %s", options[active_mode_index].name.c_str());
+    qInfo("Activated mode: %s", qUtf8Printable(config.modes[active_mode_index].name));
 
-    // Write current mode to file for waybar integration
-    updateWaybarStatus();
+    // Publish the active mode for any status bar that watches the file.
+    writeStatus();
 }
 
-void DialWheel::updateWaybarStatus() {
-    // Write current mode info to /tmp/dial_status for waybar to read
-    QFile statusFile("/tmp/dial_status");
-    if (statusFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QTextStream out(&statusFile);
-        QString mode_name = QString::fromStdString(options[active_mode_index].name);
-        QString mode_icon = QString::fromStdString(options[active_mode_index].icon);
+void DialWheel::writeStatus() {
+    if (config.status_file.isEmpty()) return;
 
-        // Write JSON format for waybar custom module
-        out << "{\n";
-        out << "  \"text\": \"" << mode_icon << " " << mode_name << "\",\n";
-        out << "  \"tooltip\": \"Dial Mode: " << mode_name << "\",\n";
-        out << "  \"class\": \"dial-mode-" << mode_name.toLower() << "\"\n";
-        out << "}\n";
-        statusFile.close();
-    }
+    QDir().mkpath(QFileInfo(config.status_file).absolutePath());
+    QFile statusFile(config.status_file);
+    if (!statusFile.open(QIODevice::WriteOnly | QIODevice::Text)) return;
+
+    const ModeConfig& mode = config.modes[active_mode_index];
+
+    // Single-line JSON for a status bar (e.g. a Waybar custom module).
+    QJsonObject obj;
+    obj["text"] = mode.status_icon;
+    obj["tooltip"] = "Dial Mode: " + mode.name;
+    obj["class"] = "dial-mode-" + mode.name.toLower();
+
+    statusFile.write(QJsonDocument(obj).toJson(QJsonDocument::Compact));
+    statusFile.close();
 }
 
 void DialWheel::toggleVisibility() {
